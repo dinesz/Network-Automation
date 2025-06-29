@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Network Automation Tool</title>
+</head>
+<body>
+    <h2>Network Automation Tool</h2>
+    <form action="/run" method="post">
+        <label for="ips">Enter Host IPs (one per line):</label><br>
+        <textarea name="ips" rows="10" cols="40" placeholder="192.168.1.1&#10;192.168.1.2" required></textarea><br><br>
+
+        <label for="vendor">Select Device Vendor:</label>
+        <select name="vendor" required>
+            <option value="cisco_ios">Cisco</option>
+            <option value="arista_eos">Arista</option>
+            <option value="juniper">Juniper</option>
+            <option value="aruba_os">Aruba</option>
+        </select><br><br>
+
+        <label for="cmd_type">Command Type:</label>
+        <select name="cmd_type" required>
+            <option value="show">Show Commands</option>
+            <option value="config">Configuration Commands</option>
+        </select><br><br>
+
+        <label for="commands">Enter Commands (one per line):</label><br>
+        <textarea name="commands" rows="10" cols="40" required></textarea><br><br>
+
+        <button type="submit">Run Commands</button>
+    </form>
+</body>
+</html>
