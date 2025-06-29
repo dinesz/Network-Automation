@@ -1,0 +1,18 @@
+'''import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)'''
+import requests
+import json
+
+url = "https://sandboxdnac.cisco.com//dna/intent/api/v1/network-device"
+
+payload = {}
+headers = {
+  'X-Auth-Token': 'eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJhY3RpdmVSRCI6IjMwYjA4ZDg2OTNkN2UxZWRkYzc0Y2I2YTk1OWFlMTJjZDEzNzgyN2QiLCJhdWQiOiJDRE5BIiwiYXV0aFNvdXJjZSI6ImxlZ2FjeSIsImNsaWVudElkIjoiZGV2bmV0dXNlciIsImVtYWlsIjoiZGV2bmV0dXNlckBsb2NhbHVzZXIuY29tIiwiZXhwIjoxNzUxMTg0NTcyLCJpYXQiOjE3NTExODA5NzIsImlzcyI6ImRuYWMiLCJyZHMiOlsiMzBiMDhkODY5M2Q3ZTFlZGRjNzRjYjZhOTU5YWUxMmNkMTM3ODI3ZCJdLCJyZXNvdXJjZUdyb3VwcyI6Ikg0c0lBQUFBQUFBQS80cXVWaW91U2c1S0xjNHZMVXBPOVV4UnNsTFNVdEpSS3Frc1NGV3lVaXJPTEVsVnFvMEZCQUFBLy8rY3ZYZktKUUFBQUE9PSIsInJvbGVzIjpbIlBVQkxJQy1ST0xFIl0sInNlc3Npb25JZCI6ImQxZTFiOWZiLTI2YWMtNTI1OC04YjgxLTFjYjBiY2YyZTBiYyIsInN1YiI6IjY3ZDA1NzMwZWEyYTE0MDA1NTg1Zjc1YyIsInRlbmFudElkIjoiNjczN2YyNjcwZWI5ZDQwMDEzMTM3ZDgzIiwidGVuYW50TmFtZSI6IlROVDAiLCJ1c2VybmFtZSI6ImRldm5ldHVzZXIifQ.VTIM8X8TUsdBRum7wxD4hCi2v2mDKftubmpX26rcP1scZcx3-4NokVBFWpDab5a6Rcnl1ri-pfb7HYbQtGsFZg'
+}
+
+response = requests.request("GET", url, verify=False, headers=headers, data=payload)
+
+'''print(response.text.encode('utf8')) '''
+
+raw_data = json.loads(response.text)
+print(type(raw_data))

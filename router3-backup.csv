@@ -1,0 +1,145 @@
+Command
+Building configuration...
+""
+Current configuration : 1628 bytes
+!
+upgrade fpd auto
+version 15.3
+service timestamps debug datetime msec
+service timestamps log datetime msec
+no service password-encryption
+!
+hostname router3
+!
+boot-start-marker
+boot-end-marker
+!
+aqm-register-fnf
+!
+!
+no aaa new-model
+no ip icmp rate-limit unreachable
+!
+!
+!
+!
+!
+!
+no ip domain lookup
+ip domain name abc.com
+ip cef
+no ipv6 cef
+!
+multilink bundle-name authenticated
+!
+!
+!
+!
+!
+!
+!
+!
+!
+username cisco privilege 15 password 0 123456789
+!
+redundancy
+!
+!
+ip tcp synwait-time 5
+ip ssh version 2
+! 
+!
+!
+!
+!
+!
+!
+!
+!
+!
+interface FastEthernet0/0
+ ip address dhcp
+ duplex half
+!
+interface Ethernet1/0
+ no ip address
+ shutdown
+ duplex half
+!
+interface Ethernet1/1
+ no ip address
+ shutdown
+ duplex half
+!
+interface Ethernet1/2
+ no ip address
+ shutdown
+ duplex half
+!
+interface Ethernet1/3
+ no ip address
+ shutdown
+ duplex half
+!
+interface Ethernet1/4
+ no ip address
+ shutdown
+ duplex half
+!
+interface Ethernet1/5
+ no ip address
+ shutdown
+ duplex half
+!
+interface Ethernet1/6
+ no ip address
+ shutdown
+ duplex half
+!
+interface Ethernet1/7
+ no ip address
+ shutdown
+ duplex half
+!
+ip forward-protocol nd
+no ip http server
+no ip http secure-server
+!
+!
+!
+no cdp log mismatch duplex
+!
+!
+!
+control-plane
+!
+!
+mgcp behavior rsip-range tgcp-only
+mgcp behavior comedia-role none
+mgcp behavior comedia-check-media-src disable
+mgcp behavior comedia-sdp-force disable
+!
+mgcp profile default
+!
+!
+!
+gatekeeper
+ shutdown
+!
+!
+line con 0
+ exec-timeout 0 0
+ privilege level 15
+ logging synchronous
+ stopbits 1
+line aux 0
+ exec-timeout 0 0
+ privilege level 15
+ logging synchronous
+ stopbits 1
+line vty 0 4
+ login local
+ transport input all
+!
+!
+end

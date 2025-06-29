@@ -1,0 +1,9 @@
+--- # Optional syntax
+--- #Between : and value need space
+Dinesh:
+  name: dinesh 
+  roll no: 34
+  dept: CS
+
+
+
