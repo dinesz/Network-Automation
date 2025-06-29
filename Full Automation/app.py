@@ -1,21 +1,21 @@
 from flask import Flask, request, render_template, send_from_directory
 from netmiko import ConnectHandler
-import threading
-import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
+import os
 
 app = Flask(__name__)
 OUTPUT_DIR = "output"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-results = {}
+MAX_THREADS = 100
 
 def run_commands_on_device(ip, vendor, cmd_type, commands):
     device = {
         'device_type': vendor,
         'host': ip,
-        'username': 'admin',     # Replace with your actual username
-        'password': 'admin123',  # Replace with your actual password
+        'username': 'admin',     # 🔁 Customize for your environment
+        'password': 'admin123',  # 🔁 Customize for your environment
     }
 
     try:
@@ -30,17 +30,17 @@ def run_commands_on_device(ip, vendor, cmd_type, commands):
 
         connection.disconnect()
     except Exception as e:
-        output = f"Connection to {ip} failed: {str(e)}"
+        output = f"[ERROR] {ip}: {str(e)}"
 
-    # Save output to a file
+    # Save output to file
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    filename = f"{ip}_{timestamp}.txt"
+    filename = f"{ip.replace('.', '_')}_{timestamp}.txt"
     filepath = os.path.join(OUTPUT_DIR, filename)
 
     with open(filepath, "w") as f:
         f.write(output)
 
-    results[ip] = filename
+    return ip, filename
 
 @app.route('/')
 def index():
@@ -48,30 +48,33 @@ def index():
 
 @app.route('/run', methods=['POST'])
 def run():
-    ip_list = request.form['ips'].splitlines()
+    ip_list = [ip.strip() for ip in request.form['ips'].splitlines() if ip.strip()]
     vendor = request.form['vendor']
     cmd_type = request.form['cmd_type']
-    commands = request.form['commands'].splitlines()
+    commands = [cmd.strip() for cmd in request.form['commands'].splitlines() if cmd.strip()]
 
-    threads = []
-    global results
-    results = {}
+    results = []
 
-    for ip in ip_list:
-        ip = ip.strip()
-        if ip:
-            t = threading.Thread(target=run_commands_on_device, args=(ip, vendor, cmd_type, commands))
-            threads.append(t)
-            t.start()
+    with ThreadPoolExecutor(max_workers=MAX_THREADS) as executor:
+        futures = {
+            executor.submit(run_commands_on_device, ip, vendor, cmd_type, commands): ip
+            for ip in ip_list
+        }
 
-    for t in threads:
-        t.join()
+        for future in as_completed(futures):
+            try:
+                ip, filename = future.result()
+                results.append((ip, filename))
+            except Exception as e:
+                results.append((futures[future], f"[ERROR] Thread failed: {str(e)}"))
 
-    # Generate output HTML
-    html_output = "<h2>Command Execution Results</h2><ul>"
-    for ip, file_name in results.items():
-        html_output += f"<li>{ip} - <a href='/output/{file_name}' target='_blank'>Download Output</a></li>"
-    html_output += "</ul><br><a href='/'>Back to Home</a>"
+    html_output = "<h2>Automation Results</h2><ul>"
+    for ip, filename in results:
+        if filename.endswith(".txt"):
+            html_output += f"<li>{ip}: <a href='/output/{filename}' target='_blank'>View Output</a></li>"
+        else:
+            html_output += f"<li>{ip}: {filename}</li>"
+    html_output += "</ul><br><a href='/'>⬅ Back</a>"
 
     return html_output
 
@@ -80,4 +83,4 @@ def download_file(filename):
     return send_from_directory(OUTPUT_DIR, filename, as_attachment=False)
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=True, threaded=True)
