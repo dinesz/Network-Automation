@@ -1,0 +1,27 @@
+ChatGPT Prompts for Network automation Learners 👇
+
+💡Copy-paste these and start exploring:
+
+🔧Basics first
+ • "Explain what network automation is in simple terms" 
+• "What are the benefits of automating network tasks?" 
+• "Give me a roadmap to learn network automation as a beginner" 
+
+💻Python & Tools 
+• "How to write a simple Python script to SSH into a router?" 
+• "What's the difference between Netmiko and Paramiko?" 
+• "How does Ansible work for network devices?" 
+
+🧪Real practice 
+• "Generate a lab setup for network automation using Cisco IOS and Python" • "Show me a sample Ansible playbook for backing up switch configs" 
+• "Write a Python script that checks if a network device is up" 
+
+📚Understand the big picture 
+• "What does a day in the life of a network automation engineer look like?" 
+• "What tools should I learn for automating large-scale networks?" 
+• "Explain infrastructure as code for networking" 
+
+👀Career & Projects 
+• "Beginner project ideas for network automation" 
+• "What certifications help in network automation?" 
+• "How to explain a network automation project in a job interview?" 
