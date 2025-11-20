@@ -1,0 +1,8 @@
+file veerify auto
+
+Need to put only commands that needs to be pushed
+Dont add 
+
+conf t, wr mem 
+
+Put commands one by one
