@@ -1,0 +1,261 @@
+import os
+import sys
+import argparse
+import datetime
+from dataclasses import dataclass
+from typing import List, Dict, Any
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+from netmiko import (
+    ConnectHandler,
+    NetmikoTimeoutException,
+    NetmikoAuthenticationException,
+)
+
+# -------------------------- Defaults -------------------------- #
+DEFAULT_DEVICE_FILE = r"C:\Users\Add path\Python scripts\Device Config Backup\Backing UP\devices.txt"
+DEFAULT_CREDENTIAL_FILE = r"C:\Users\Add path\Python scripts\Device Config Backup\Backing UP\credentials.txt"
+DEFAULT_COMMAND_FILE = r"C:\Users\Add path\Python scripts\Device Config Backup\Backing UP\config.txt"
+
+DEFAULT_OUTPUT_DIR = "outputs"
+DEFAULT_MAX_THREADS = 20
+
+VERIFY_COMMAND = "show running-config | include file verify auto"
+VERIFY_TOKEN = "file verify auto"
+
+
+# -------------------------- Small utilities -------------------------- #
+def now_stamp() -> str:
+    return datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+
+
+def ensure_dir(path: str) -> None:
+    os.makedirs(path, exist_ok=True)
+
+
+def read_nonempty_lines(path: str) -> List[str]:
+    with open(path, "r", encoding="utf-8") as f:
+        return [line.strip() for line in f if line.strip()]
+
+
+def die(msg: str, code: int = 1) -> None:
+    print(f"[ERROR] {msg}")
+    sys.exit(code)
+
+
+def log_path(output_dir: str, host: str) -> str:
+    return os.path.join(output_dir, f"{host}_{now_stamp()}.txt")
+
+
+# -------------------------- Input model -------------------------- #
+@dataclass(frozen=True)
+class Inputs:
+    devices: List[str]
+    username: str
+    password: str
+    enable_secret: str
+    commands: List[str]
+
+
+def load_inputs(device_file: str, credential_file: str, command_file: str) -> Inputs:
+    for path in (device_file, credential_file, command_file):
+        if not os.path.isfile(path):
+            die(f"Required file not found: {path}")
+
+    devices = read_nonempty_lines(device_file)
+    if not devices:
+        die(f"Device list is empty: {device_file}")
+
+    creds_line = read_nonempty_lines(credential_file)
+    if not creds_line:
+        die(f"Credential file is empty: {credential_file}")
+
+    # Expect: username:password[:enable_secret]
+    parts = creds_line[0].split(":")
+    if len(parts) < 2:
+        die("Credential format must be 'username:password[:enable_secret]'")
+
+    username = parts[0].strip()
+    password = parts[1].strip()
+    enable_secret = parts[2].strip() if len(parts) > 2 else password
+
+    commands = read_nonempty_lines(command_file)
+    if not commands:
+        die(f"Command file is empty: {command_file}")
+
+    return Inputs(
+        devices=devices,
+        username=username,
+        password=password,
+        enable_secret=enable_secret,
+        commands=commands,
+    )
+
+
+# -------------------------- Core worker -------------------------- #
+def push_config_to_device(
+    host: str,
+    username: str,
+    password: str,
+    enable_secret: str,
+    commands: List[str],
+    output_dir: str,
+) -> Dict[str, Any]:
+    """
+    Connect -> enable -> push config -> save -> verify -> write a log.
+    Returns a small result dict for summary reporting.
+    """
+    device = {
+        "device_type": "cisco_ios",
+        "host": host,
+        "username": username,
+        "password": password,
+        "secret": enable_secret,
+    }
+
+    device_log = log_path(output_dir, host)
+
+    try:
+        with ConnectHandler(**device) as conn:
+            print(f"[CONNECTED] {host}")
+            conn.enable()
+
+            config_output = conn.send_config_set(commands)
+
+            # Try to save config; keep going even if platform differs.
+            try:
+                conn.save_config()
+            except Exception as e:
+                config_output += f"\n\n[WARN] save_config() failed: {e}"
+
+            verify_output = conn.send_command(VERIFY_COMMAND)
+            ok = VERIFY_TOKEN in verify_output
+
+            status = "[SUCCESS]" if ok else "[FAILED] Verification"
+
+            # ===================== UPDATE START ===================== #
+            # Reason is stored for failed_devices file (IP,reason)
+            reason = "" if ok else "Verification failed (token not found)"
+            # ====================== UPDATE END ====================== #
+
+            with open(device_log, "w", encoding="utf-8") as f:
+                f.write("=== CONFIG OUTPUT ===\n")
+                f.write(config_output)
+                f.write("\n\n=== VERIFICATION COMMAND ===\n")
+                f.write(VERIFY_COMMAND)
+                f.write("\n\n=== VERIFICATION OUTPUT ===\n")
+                f.write(verify_output)
+                f.write(f"\n\nStatus: {status}\n")
+
+            # ===================== UPDATE START ===================== #
+            return {
+                "host": host,
+                "success": ok,
+                "reason": reason,  # <-- added
+                "message": f"{status} {host} -> {device_log}",
+                "log_file": device_log,
+            }
+            # ====================== UPDATE END ====================== #
+
+    # ===================== UPDATE START ===================== #
+    except (NetmikoTimeoutException, NetmikoAuthenticationException) as e:
+        reason = f"Connection error: {e}"
+        msg = f"[FAILED] {host} -> {reason}"
+        # Minimal log even on connection failure
+        with open(device_log, "w", encoding="utf-8") as f:
+            f.write("=== CONNECTION ERROR ===\n")
+            f.write(str(e))
+            f.write("\nStatus: [FAILED]\n")
+        return {"host": host, "success": False, "reason": reason, "message": msg, "log_file": device_log}
+    # ====================== UPDATE END ====================== #
+
+    # ===================== UPDATE START ===================== #
+    except Exception as e:
+        reason = f"General error: {e}"
+        msg = f"[FAILED] {host} -> {reason}"
+        with open(device_log, "w", encoding="utf-8") as f:
+            f.write("=== GENERAL ERROR ===\n")
+            f.write(str(e))
+            f.write("\nStatus: [FAILED]\n")
+        return {"host": host, "success": False, "reason": reason, "message": msg, "log_file": device_log}
+    # ====================== UPDATE END ====================== #
+
+
+# -------------------------- Runner / Summary -------------------------- #
+def run_all(inputs: Inputs, output_dir: str, max_threads: int) -> None:
+    ensure_dir(output_dir)
+
+    print(f"Starting config push for {len(inputs.devices)} devices (threads={max_threads})...")
+
+    results: List[Dict[str, Any]] = []
+
+    with ThreadPoolExecutor(max_workers=max_threads) as pool:
+        futures = [
+            pool.submit(
+                push_config_to_device,
+                host,
+                inputs.username,
+                inputs.password,
+                inputs.enable_secret,
+                inputs.commands,
+                output_dir,
+            )
+            for host in inputs.devices
+        ]
+
+        for fut in as_completed(futures):
+            results.append(fut.result())
+
+    # Print per-device results
+    print("\n" + "=" * 40)
+    print("Config Push Results")
+    print("=" * 40)
+    for r in results:
+        print(r["message"])
+
+    # Summary
+    succeeded = [r for r in results if r["success"]]
+    failed = [r for r in results if not r["success"]]
+
+    print("\n" + "=" * 40)
+    print("Summary")
+    print("=" * 40)
+    print(f"Total devices : {len(results)}")
+    print(f"Successful    : {len(succeeded)}")
+    print(f"Failed        : {len(failed)}")
+
+    # ===================== UPDATE START ===================== #
+    # Save failed list with IP + reason
+    if failed:
+        failed_list = os.path.join(output_dir, f"failed_devices_{now_stamp()}.txt")
+        with open(failed_list, "w", encoding="utf-8") as f:
+            f.write("ip,reason\n")
+            for r in failed:
+                reason = (r.get("reason") or "").replace("\n", " ").replace("\r", " ").strip()
+                f.write(f"{r['host']},{reason}\n")
+
+        print(f"\nFailed device list saved to: {failed_list}")
+    # ====================== UPDATE END ====================== #
+
+
+# -------------------------- CLI -------------------------- #
+def build_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(
+        description="Push config to Cisco IOS devices via Netmiko (with verification + logging)."
+    )
+    p.add_argument("--devices", default=DEFAULT_DEVICE_FILE, help="Path to devices.txt")
+    p.add_argument("--creds", default=DEFAULT_CREDENTIAL_FILE, help="Path to credentials.txt (username:password[:enable])")
+    p.add_argument("--commands", default=DEFAULT_COMMAND_FILE, help="Path to config.txt (one command per line)")
+    p.add_argument("--out", default=DEFAULT_OUTPUT_DIR, help="Output directory for logs")
+    p.add_argument("--threads", type=int, default=DEFAULT_MAX_THREADS, help="Max worker threads")
+    return p
+
+
+def main() -> None:
+    args = build_parser().parse_args()
+    inputs = load_inputs(args.devices, args.creds, args.commands)
+    run_all(inputs, output_dir=args.out, max_threads=args.threads)
+
+
+if __name__ == "__main__":
+    main()
