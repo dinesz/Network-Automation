@@ -3,235 +3,143 @@ import pandas as pd
 from concurrent.futures import ThreadPoolExecutor, as completed
 from netmiko import ConnectHandler
 
-DEVICE FILE
 
-File Inputs
 
-"C:\Users\dk17\OneDrive Capgemini\Desktop\Python scripts\Device Config Backup\Backing UP\devices.txt"
+# ---------- File Inputs ----------
 
-#
+DEVICE FILE = r"C:\Users\profile name\OneDrive name\Desktop\Python scripts\Device Config Backup\Backing UP\devices.txt"
 
-CREDENTIAL FILE
+CREDENTIAL FILE = r"C:\Users\profile name\OneDrive name\Desktop\Python scripts\Device Config Backup Backing UP\credentials.txt"
 
-r"C:\Users\dk17\OneDrive Capgemini\Desktop\Python scripts\Device Config Backup Backing UP\credentials.txt"
+COMMAND FILE = r"C:\Users\profile name\OneDrive - name\Desktop\Python scripts\Device Config Backup Backing UP\commands.txt"
 
-COMMAND FILE
+OUTPUT_EXCEL = r"C:\Users\profile name\OneDrive name\Desktop\Python scripts\Device Config Backup Backing UP\Cisco_IOS_Version_Report.xlsx"
 
-"C:\Users\dk17\OneDrive - Capgemini\Desktop\Python scripts\Device Config Backup Backing UP\commands.txt"
-
-#
-
-OUTPUT_EXCEL
-
-"C:\
-
-Users\dk17\OneDrive Capgemini\Desktop\Python scripts\Device Config Backup Backing UP\Cisco_IOS_Version_Report.xlsx"
-
-Load Devices
+# ---------- Load Devices ----------
 
 with open(DEVICE_FILE) as f:
+    devices [line.strip() for line in f if line.strip()]
 
-devices [line.strip() for line in f if line.strip()]
 
-#
-
-Load Credentials
+# ---------- Load Credentials ----------
 
 with open(CREDENTIAL_FILE) as f:
+    creds f.read().strip().split(":")
+    USERNAME, PASSWORD = creds[0], creds [1]
 
-creds f.read().strip().split(":")
-
-#
-
-USERNAME, PASSWORD = creds[0], creds [1]
-
-Load Commands
-
+# ---------- Load Commands ----------
 with open(COMMAND FILE) as f:
+    commands [line.strip() for line in f if line.strip()]
 
-commands [line.strip() for line in f if line.strip()]
-
-# Worker Function
-
+# ---------- Worker Function ----------
 def collect outputs(host):
 
-device {
-
-"device type": "cisco ios",
-
-"host": host,
-
-"username": USERNAME,
-
-"password": PASSWORD,
-
-"fast cli": False,
-
-}
+    device {    
+        "device type": "cisco ios",
+        "host": host,        
+        "username": USERNAME,        
+        "password": PASSWORD,        
+        "fast cli": False,
+  }
 
 try:
+        conn = ConnectHandler(**device)
+        conn.enable()
 
-conn ConnectHandler(**device)
+        version = ""
+        model = ""
 
-conn.enable()
+        for cmd in commands:
 
-version
+            output = conn.send_command(
+                cmd,
+                read_timeout=60
+            )
 
-model
+            for line in output.splitlines():
 
-for cmd in commands:
+                # IOS Version
+                if "Version" in line and not version:
+                    match = re.search(r"Version\s+([^\s,]+)", line)
+                    if match:
+                        version = match.group(1)
 
-output conn.send.command( cmd, read timeout=60 )
+                # Catalyst 9K
+                if "Model Number" in line:
+                    model = line.split(":")[-1].strip()
 
-for line in gutput.splitlines():
+                # Catalyst 2K
+                elif "processor" in line.lower() and "cisco" in line.lower():
+                    words = line.split()
+                    if len(words) > 1:
+                        model = words[1]
+                        
+        # Get actual switch hostname                
+        hostname = conn.find_prompt().replace("#", "").replace(">", "").strip()
+        
+        conn.disconnect()
 
-#10S Version
+        return {
+            "Host": host,
+            "Hostname": hostname,
+            "Status": "Success",
+            "IOS Version": version,
+            "Model Number": model
+        }
 
-if "Version" in line and not version:
+    except Exception as e:
+        return {
+            "Host": host,
+            "Hostname": "",
+            "Status": f"Failed - {str(e)}",
+            "IOS Version": "",
+            "Model Number": ""
+        }
 
-match re.search(r"version\s+([^\s,]+)", line)
-
-if match:
-
-version match.group(1)
-
-# Catalyst 9K
-
-if "Model Number" in line:
-
-model line.split(":")[-1].strip()
-
-# Catalyst 2K
-
-elif "processor" in line.lower() and "cisco" in line.lower():
-
-words line.split()
-
-if len(words) > 1:
-
-model words[1]
-
-
-
-Get actual switch hostname
-
-hostname conn.find prompt().replace("#", "").replace(">", "").strip()
-
-conn.disconnect()
-
-return {
-
-"Host": host, "Hostname": hostname, "Status": "Success", "10S Version": version, "Model Number": model
-
-except Exception as e:
-
-return (
-
-"Host": host, "Hostname": "", "Status": f"Failed (str(e))", "IOS version": "", "Model Number":
-
-}
-
+# ---------- Main ----------
 def main():
 
-all_results = []
+    all_results = []
 
-I
+    with ThreadPoolExecutor(max_workers=50) as executor:
 
-with ThreadPoolExecutor (max workers=50) as executor:
+        futures = {
+            executor.submit(collect_outputs, host): host
+            for host in devices
+        }
 
-futures = {
+        for future in as_completed(futures):
 
-executor.submit(collect_outputs, host): host for host in devices
+            result = future.result()
+            all_results.append(result)
 
-}
+            print(
+                f"{result['Host']} | "
+                f"{result['Hostname']} | "
+                f"{result['Status']} | "
+                f"{result['IOS Version']} | "
+                f"{result['Model Number']}"
+            )
 
-for future in as completed (futures):
+    # Generate Excel
+    df = pd.DataFrame(all_results)
 
-result = future.result()
+    df = df[
+        [
+            "Host",
+            "Hostname",
+            "Status",
+            "IOS Version",
+            "Model Number"
+        ]
+    ]
 
-all results.append(result)
+    df.to_excel(OUTPUT_EXCEL, index=False)
 
-print(
+    print("\n================================================")
+    print("Report Generated Successfully")
+    print(f"Location: {OUTPUT_EXCEL}")
+    print("================================================")
 
-f"{result['Host']} | "
-
-)
-
-f"{result['Hostname']} | "
-
-f"{result['status']} |
-
-f"{result['IOS Version']} |"
-
-f"{result['Model Number']}"
-
-
-print(
-
-)
-
-f"(result['Host']} | "
-
-f"(result['Hostname']} | "
-
-f"{result['status']} |
-
-f"(result['IOS Version']} |
-
-f"{result['Model Number']}"
-
-#Generate Excel
-
-df pd.DataFrame(all results)
-
-df = df[ [
-
-"Host",
-
-"Hostname",
-
-"Status",
-
-"IOS Version",
-
-"Model Number"
-
-]
-
-1
-
-df.to excel (OUTPUT_EXCEL, index=False)
-
-print("\n====
-
-")
-
-print("Report Generated Successfully")
-
-print(f"Location: (OUTPUT_EXCEL}")
-
-print("======
-
-if
-
-")
-
-name main()
-
-main":
-
-all results[]
-
-with ThreadPoolExecutor (max workers-50) as executor:
-
-}
-
-futures {
-
-executor.submit(collect outputs, host): host for host in devices
-
-for future in as completed(futures):
-
-result future.result() all results.append(result)
-
-print(
+if __name__ == "__main__":
+    main()
