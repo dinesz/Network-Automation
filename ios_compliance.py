@@ -23,6 +23,19 @@ with open(DEVICE_FILE) as f:
 
 # ---------- Load Credentials ----------
 
+# with open(CREDENTIAL_FILE) as f:
+
+   # file_content = f.read()
+
+    # file_content = file_content.strip()
+
+   # creds = file_content.split(":")
+
+     # USERNAME = creds[0]
+
+# PASSWORD = creds[1]
+# -- we will create below function like above
+
 with open(CREDENTIAL_FILE) as f:
     creds f.read().strip().split(":")
     USERNAME, PASSWORD = creds[0], creds [1]
